@@ -24,10 +24,12 @@ window.addEventListener('DOMContentLoaded', async () => {
     setEstado("Cargando el motor 3D (puede tardar unos segundos la primera vez)...");
 
     try {
+        // 1. Descargamos el texto del .scad (para leer los parámetros)
         const resp = await fetch(NOMBRE_ARCHIVO_SCAD + "?v=" + new Date().getTime());
         if (!resp.ok) throw new Error("No se encontró " + NOMBRE_ARCHIVO_SCAD + " junto a index.html");
         scadOriginal = await resp.text();
 
+        // 2. Arrancamos el motor real de OpenSCAD (WASM), capturando sus mensajes
         instancia = await OpenSCAD({
             noInitialRun: true,
             print: (msg) => agregarLog(msg),
@@ -36,7 +38,10 @@ window.addEventListener('DOMContentLoaded', async () => {
         addFonts(instancia);
         addMCAD(instancia);
 
+        // 3. Construimos los sliders/selectores según lo que diga el .scad
         construirInterfaz(scadOriginal);
+
+        // 4. Preparamos el visor 3D (vacío por ahora, hasta que generes un modelo)
         initViewer3D();
 
         setEstado("Listo. Sube tu archivo SVG y presiona “Generar Modelo 3D”.");
@@ -55,30 +60,11 @@ document.getElementById('svg-file').addEventListener('change', (evento) => {
     if (!archivo) return;
     const lector = new FileReader();
     lector.onload = () => {
-        try {
-            const bytes = new Uint8Array(lector.result);
-            let texto;
-
-            if (bytes[0] === 0xFF && bytes[1] === 0xFE) {
-                texto = new TextDecoder('utf-16le').decode(bytes.slice(2));
-            } else if (bytes[0] === 0xFE && bytes[1] === 0xFF) {
-                texto = new TextDecoder('utf-16be').decode(bytes.slice(2));
-            } else if (bytes[0] === 0xEF && bytes[1] === 0xBB && bytes[2] === 0xBF) {
-                texto = new TextDecoder('utf-8').decode(bytes.slice(3));
-            } else {
-                texto = new TextDecoder('utf-8').decode(bytes);
-            }
-
-            texto = texto.replace(/encoding="UTF-16"/i, 'encoding="UTF-8"');
-
-            svgTexto = texto;
-            setEstado("SVG cargado: " + archivo.name + ". Ya puedes generar el modelo.");
-        } catch (e) {
-            setEstado("❌ No se pudo interpretar ese SVG: " + e.message);
-        }
+        svgTexto = lector.result;
+        setEstado("SVG cargado: " + archivo.name + ". Ya puedes generar el modelo.");
     };
     lector.onerror = () => setEstado("❌ No se pudo leer ese archivo SVG.");
-    lector.readAsArrayBuffer(archivo);
+    lector.readAsText(archivo);
 });
 
 // -------------------------------------------------------------
@@ -95,6 +81,7 @@ function construirInterfaz(scadText) {
     contenedor.innerHTML = "";
     tiposControl = {};
 
+    // Busca líneas del tipo:  Nombre = valor; // [rango o lista]
     const regexParam = /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.+?);\s*\/\/\s*\[(.+?)\]\s*$/;
 
     scadText.split('\n').forEach((linea) => {
@@ -113,6 +100,7 @@ function construirInterfaz(scadText) {
         div.appendChild(label);
 
         if (rango.includes(":")) {
+            // Es un control deslizante (slider): [min:paso:max]
             const [min, step, max] = rango.split(":").map((s) => s.trim());
             const fila = document.createElement('div');
             fila.style.display = "flex";
@@ -139,6 +127,7 @@ function construirInterfaz(scadText) {
             div.appendChild(fila);
             tiposControl[nombre] = "number";
         } else {
+            // Es un selector (lista de opciones separadas por coma)
             const opciones = rango.split(",").map((s) => s.trim());
             const select = document.createElement('select');
             select.id = "param-" + nombre;
@@ -158,6 +147,7 @@ function construirInterfaz(scadText) {
     });
 }
 
+// Reconstruye el texto del .scad reemplazando cada parámetro por el valor actual del control
 function reconstruirScad(original) {
     const regexAsignacion = /^(\s*)([A-Za-z_][A-Za-z0-9_]*)(\s*=\s*)(.+?)(;\s*(\/\/.*)?)$/;
 
@@ -167,7 +157,7 @@ function reconstruirScad(original) {
 
         const nombre = m[2];
         const tipo = tiposControl[nombre];
-        if (!tipo) return linea;
+        if (!tipo) return linea; // este parámetro no tiene control (ej. archivo_svg), se deja igual
 
         const el = document.getElementById("param-" + nombre);
         if (!el) return linea;
@@ -190,12 +180,14 @@ async function compilar() {
     try {
         const scadFinal = reconstruirScad(scadOriginal);
 
+        // Escribimos ambos archivos en el "disco virtual" del motor
         instancia.FS.writeFile("/input.scad", scadFinal);
         instancia.FS.writeFile("/diseno.svg", svgTexto);
 
+        // Borramos cualquier resultado anterior para detectar errores reales
         try { instancia.FS.unlink("/output.stl"); } catch (e) {}
 
-        instancia.callMain(["/input.scad", "-o", "/output.stl"]);
+        instancia.callMain(["/input.scad", "--enable=manifold", "-o", "/output.stl"]);
 
         const datos = instancia.FS.readFile("/output.stl");
         ultimoSTL = datos;
@@ -203,9 +195,8 @@ async function compilar() {
         setEstado("✅ Modelo generado. Ya puedes descargar el STL.");
     } catch (err) {
         console.error(err);
-        const detalle = (err && err.message) ? err.message : "revisa los mensajes de arriba en el registro (⚠️), ahí suele estar la causa real.";
         setEstado("❌ No se pudo generar el modelo. Revisa el registro de abajo.");
-        agregarLog("❌ Falló la generación: " + detalle);
+        agregarLog("❌ " + err.message);
     } finally {
         document.getElementById('btn-render').disabled = false;
     }
