@@ -60,11 +60,31 @@ document.getElementById('svg-file').addEventListener('change', (evento) => {
     if (!archivo) return;
     const lector = new FileReader();
     lector.onload = () => {
-        svgTexto = lector.result;
-        setEstado("SVG cargado: " + archivo.name + ". Ya puedes generar el modelo.");
+        try {
+            const bytes = new Uint8Array(lector.result);
+            let texto;
+
+            if (bytes[0] === 0xFF && bytes[1] === 0xFE) {
+                texto = new TextDecoder('utf-16le').decode(bytes.slice(2));
+            } else if (bytes[0] === 0xFE && bytes[1] === 0xFF) {
+                texto = new TextDecoder('utf-16be').decode(bytes.slice(2));
+            } else if (bytes[0] === 0xEF && bytes[1] === 0xBB && bytes[2] === 0xBF) {
+                texto = new TextDecoder('utf-8').decode(bytes.slice(3));
+            } else {
+                texto = new TextDecoder('utf-8').decode(bytes);
+            }
+
+            texto = texto.replace(/encoding="UTF-16"/i, 'encoding="UTF-8"');
+
+            svgTexto = texto;
+            setEstado("SVG cargado: " + archivo.name + ". Ya puedes generar el modelo.");
+        } catch (e) {
+            setEstado("❌ No se pudo interpretar ese SVG: " + e.message);
+        }
     };
     lector.onerror = () => setEstado("❌ No se pudo leer ese archivo SVG.");
-    lector.readAsText(archivo);
+    lector.readAsArrayBuffer(archivo);
+});
 });
 
 // -------------------------------------------------------------
