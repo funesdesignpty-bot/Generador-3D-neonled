@@ -1,64 +1,41 @@
 // =============================================================
-// MOTOR DE INTEGRACIÓN TOTAL OPENSCAD WASM - FUNES DESIGN 360
-// Corrección de renderizado y lectura dinámica de variables v5.8
+// MOTOR DE INTEGRACIÓN OPENSCAD WASM - EDICIÓN NEÓN FLEX
+// Funes Design 360 - Réplica exacta de parámetros JSON
 // =============================================================
 
 let openscadInstance = null;
 let archivoSvgContenido = "";
-let scriptBaseOriginal = "";
 
-// Clonamos exactamente los parámetros de tu archivo v5.8 para armar el panel izquierdo
-scriptBaseOriginal = `
-/* [1. ARCHIVO VECTORIAL] */
-archivo_svg = "diseno.svg"; 
+// Definición exacta basada en tu set de valores predeterminados de Neón Flex
+const configuracionNeonValores = [
+    { tipo: "seccion", titulo: "Configuración de Archivo" },
+    { id: "archivo_svg", etiqueta: "Archivo SVG", tipo: "texto", defecto: "diseno.svg" },
+    
+    { tipo: "seccion", titulo: "Selección de Pieza y Modo" },
+    { id: "Tipo_de_Proyecto", etiqueta: "Tipo de Proyecto", tipo: "lista", opciones: ["Neon_Flex", "Acrilica_Fondo_Hueco", "Ajuste_Trasero_Muesca"], defecto: "Neon_Flex" },
+    { id: "Exportar_Seccion", etiqueta: "Exportar Sección", tipo: "lista", opciones: ["completa", "cortada"], defecto: "completa" },
+    { id: "Activar_Base_Union", etiqueta: "Activar Base Unión", tipo: "lista", opciones: ["no", "si"], defecto: "no" },
+    { id: "Espejo", etiqueta: "Espejo", tipo: "lista", opciones: ["no", "si"], defecto: "no" },
 
-/* [2. SELECCIÓN DE PIEZA Y MODO] */
-Renderizar = "Letra_Principal"; // [Letra_Principal, Tapa_Frontal_Para_Muesca, Tapa_Trasera_Encajable, Bloqueador_Luz_Antifuga, Vector_Corte_Base_CNC]
-Tipo_de_Proyecto = "Pared_Continua_Frontal"; // [Pared_Continua_Frontal, Efecto_Infinito, Ajuste_Trasero_Muesca, Soporte_Triangular_Simple, Apoyo_Doble, Muesca_Plana_Frontal]
+    { tipo: "seccion", titulo: "Dimensiones del Canal de Neón" },
+    { id: "Ancho_Canal_Neon", etiqueta: "Ancho Canal Neón", tipo: "rango", min: 3, max: 12, paso: 0.1, defecto: 6.0 },
+    { id: "Profundidad_Canal", etiqueta: "Profundidad Canal", tipo: "rango", min: 5, max: 20, paso: 0.5, defecto: 11.0 },
+    { id: "Pared_Neon", etiqueta: "Pared Neón", tipo: "rango", min: 1, max: 5, paso: 0.1, defecto: 2.3 },
+    { id: "Fondo_Neon", etiqueta: "Fondo Neón", tipo: "rango", min: 0.5, max: 5, paso: 0.1, defecto: 1.5 },
 
-/* [3. DIMENSIONES GLOBALES Y BASE] */
-Altura_Corporea = 35; // [5:1:150]
-Pared_Externa = 2.0; // [0.8:0.1:10]
-Tolerancia_Calce = 0.15; // [0:0.01:1]
-Grosor_Base_Solida = 0.0; // [0:0.4:10]
-Espejo = 0; // [0:1]
+    { tipo: "seccion", titulo: "Dimensiones de la Base Corpórea" },
+    { id: "Altura_Corporea", etiqueta: "Altura Corpórea", tipo: "rango", min: 10, max: 100, paso: 1, defecto: 35 },
+    { id: "Pared_Externa_Corp", etiqueta: "Pared Externa Corpórea", tipo: "rango", min: 1, max: 5, paso: 0.1, defecto: 2.0 },
+    { id: "Soporte_Interno_Corp", etiqueta: "Soporte Interno", tipo: "rango", min: 1, max: 5, paso: 0.1, defecto: 2.5 },
+    { id: "Distancia_Acritico_Tope", etiqueta: "Distancia Acrílico Tope", tipo: "rango", min: 1, max: 10, paso: 0.5, defecto: 5.0 },
 
-/* [4. CONFIG: SOPORTE DE PARED (FRONTAL / INFINITO)] */
-Grosor_Acrilico_Frontal = 3.0; // [1:0.1:10]
-Grosor_Acrilico_Trasero = 3.0; // [1:0.1:10]
-Ancho_Soporte_Interno = 2.5; // [1:0.1:15]
+    { tipo: "seccion", titulo: "Estructura de Unión y Cama" },
+    { id: "Altura_Base_Union", etiqueta: "Altura Base Unión", tipo: "rango", min: 1, max: 10, paso: 0.5, defecto: 2.0 },
+    { id: "Margen_Base_Union", etiqueta: "Margen Base Unión", tipo: "rango", min: 0, max: 20, paso: 1, defecto: 0 },
+    { id: "Tamano_Cama", etiqueta: "Tamaño de Cama Impresora", tipo: "rango", min: 100, max: 500, paso: 10, defecto: 220 }
+];
 
-/* [5. CONFIG: MUESCA PLANA AJUSTABLE (TRASERA Y FRONTAL)] */
-Ancho_Muesca_X = 2.5; // [1:0.1:15]
-Altura_Muesca_Z = 1.6; // [0.4:0.1:20]
-
-/* [6. CONFIG: SOPORTE TRIANGULARES] */
-Tamano_Triangulo = 3.6; // [1:0.1:15]
-Grosor_Material_Acrilico = 3.0; // [1:0.1:10]
-Altura_Soporte_Inf = 3.0; // [1:0.1:20]
-
-/* [7. CONFIG: TAPA FRONTAL CON ENCASTE] */
-Grosor_Base_Tapa_Frontal = 3.0; // [0.5:0.1:10]
-Altura_Pestana_Frontal = 4.0; // [0:0.1:30]
-Grosor_Pestana_Frontal = 1.5; // [0.5:0.1:5]
-Distancia_Borde_Pestana_Frontal = 2.0; // [0:0.1:10]
-Holgura_Tapa_Frontal = 0.15; // [0:0.05:1]
-
-/* [8. CONFIG: TAPA TRASERA ENCAJABLE TRADICIONAL] */
-Grosor_Base_Tapa = 2.0; // [0.5:0.1:10]
-Altura_Pared_Tapa = 5.0; // [1:0.1:30]
-Grosor_Pared_Tapa = 1.5; // [0.5:0.1:5]
-Holgura_Tapa = 0.2; // [0:0.05:1]
-
-/* [9. CONFIG: BLOQUEADOR DE LUZ] */
-Pared_Bloqueador = 0.8; // [0.4:0.1:2]
-Holgura_Bloqueador = 0.15; // [0:0.05:1]
-
-/* [10. CONFIG: HUECO DE ENCASTRADO PARA BASE CNC] */
-Holgura_Corte_Base_CNC = 0.25; // [0:0.05:2]
-`;
-
-// Inicializar el entorno WebAssembly de OpenSCAD
+// Inicializar el compilador WebAssembly
 window.addEventListener('DOMContentLoaded', async () => {
     const loader = document.getElementById('loading');
     loader.style.display = "block";
@@ -69,81 +46,79 @@ window.addEventListener('DOMContentLoaded', async () => {
             container: document.getElementById("viewer")
         });
         loader.style.display = "none";
-        procesarEInyectarParametros(scriptBaseOriginal);
+        generarInterfazControles();
     } catch (err) {
-        console.error("Error al arrancar OpenSCAD WASM:", err);
-        loader.innerText = "Error al iniciar el motor matemático 3D.";
+        console.error("Error al iniciar OpenSCAD WASM:", err);
+        loader.innerText = "Error crítico al iniciar el motor de renderizado 3D.";
     }
 });
 
-// GENERADOR DINÁMICO DE DESLIZADORES E INTERFAZ
-function procesarEInyectarParametros(scadText) {
+// Construcción dinámica de campos en la barra lateral basándonos en el JSON original
+function generarInterfazControles() {
     const contenedor = document.getElementById('dynamic-params');
     contenedor.innerHTML = "";
-    const lineas = scadText.split('\n');
 
-    lineas.forEach(linea => {
-        linea = linea.trim();
-        if (linea.startsWith("/* [") && linea.includes("] */")) {
+    configuracionNeonValores.forEach(item => {
+        if (item.tipo === "seccion") {
             const h2 = document.createElement('h2');
-            h2.innerText = linea.replace("/* [", "").replace("] */", "");
+            h2.innerText = item.titulo;
             contenedor.appendChild(h2);
             return;
         }
-        if (!linea || linea.startsWith("//") || linea.startsWith("/*")) return;
 
-        if (linea.includes("=") && linea.includes(";")) {
-            const partes = linea.split(";");
-            const declaracion = partes[0].split("=");
-            const nombreVar = declaracion[0].trim();
-            let valorDefecto = declaracion[1].trim().replace(/"/g, "");
-            const comentario = partes[1] ? partes[1].replace("//", "").trim() : "";
+        const divGrupo = document.createElement('div');
+        divGrupo.className = "control-group";
 
-            const divGrupo = document.createElement('div');
-            divGrupo.className = "control-group";
-            const label = document.createElement('label');
-            label.id = `lbl-${nombreVar}`;
-            label.innerText = `${nombreVar.replace(/_/g, ' ')}: ${valorDefecto}`;
+        const label = document.createElement('label');
+        label.id = `lbl-${item.id}`;
+        label.innerText = `${item.etiqueta}: ${item.defecto}`;
+        divGrupo.appendChild(label);
 
-            if (comentario.startsWith("[") && comentario.endsWith("]") && !comentario.includes(":")) {
-                const opciones = comentario.replace("[", "").replace("]", "").split(",");
-                const select = document.createElement('select');
-                select.id = `param-${nombreVar}`;
-                opciones.forEach(opt => {
-                    const o = opt.trim();
-                    const op = document.createElement('option');
-                    op.value = o; op.innerText = o.replace(/_/g, ' ');
-                    if (o === valorDefecto) op.selected = true;
-                    select.appendChild(op);
-                });
-                select.addEventListener('change', () => {
-                    label.innerText = `${nombreVar.replace(/_/g, ' ')}: ${select.value}`;
-                    compilarDisenoReal();
-                });
-                divGrupo.appendChild(label); divGrupo.appendChild(select);
-            } 
-            else if (comentario.startsWith("[") && comentario.endsWith("]")) {
-                const rango = comentario.replace("[", "").replace("]", "").split(":");
-                let min = 0, step = 1, max = 100;
-                if (rango.length === 3) { [min, step, max] = rango; } 
-                else if (rango.length === 2) { [min, max] = rango; }
-
-                const slider = document.createElement('input');
-                slider.type = "range"; slider.id = `param-${nombreVar}`;
-                slider.min = min; slider.max = max; slider.step = step;
-                slider.value = parseFloat(valorDefecto);
-                slider.addEventListener('input', () => {
-                    label.innerText = `${nombreVar.replace(/_/g, ' ')}: ${slider.value}${isNaN(slider.value) ? '' : ' mm'}`;
-                    compilarDisenoReal();
-                });
-                divGrupo.appendChild(label); divGrupo.appendChild(slider);
-            }
-            if (divGrupo.children.length > 0) contenedor.appendChild(divGrupo);
+        if (item.tipo === "lista") {
+            const select = document.createElement('select');
+            select.id = `param-${item.id}`;
+            item.opciones.forEach(opt => {
+                const option = document.createElement('option');
+                option.value = opt;
+                option.innerText = opt.replace(/_/g, ' ');
+                if (opt === item.defecto) option.selected = true;
+                select.appendChild(option);
+            });
+            select.addEventListener('change', () => {
+                label.innerText = `${item.etiqueta}: ${select.value}`;
+                compilarDisenoReal();
+            });
+            divGrupo.appendChild(select);
+        } 
+        else if (item.tipo === "rango") {
+            const slider = document.createElement('input');
+            slider.type = "range";
+            slider.id = `param-${item.id}`;
+            slider.min = item.min;
+            slider.max = item.max;
+            slider.step = item.paso;
+            slider.value = item.defecto;
+            slider.addEventListener('input', () => {
+                label.innerText = `${item.etiqueta}: ${slider.value} mm`;
+                compilarDisenoReal();
+            });
+            divGrupo.appendChild(slider);
         }
+        else if (item.tipo === "texto") {
+            const inputTexto = document.createElement('select'); // Fijo para mantener la equivalencia del archivo alias
+            inputTexto.id = `param-${item.id}`;
+            const opt = document.createElement('option');
+            opt.value = "diseno.svg"; opt.innerText = "diseno.svg";
+            inputTexto.appendChild(opt);
+            inputTexto.disabled = true;
+            divGrupo.appendChild(inputTexto);
+        }
+
+        contenedor.appendChild(divGrupo);
     });
 }
 
-// CAPTURA VIRTUAL DE CUALQUIER SVG SUBIDO
+// Lector de archivos SVG locales
 const fileInput = document.getElementById('svg-file');
 if (fileInput) {
     fileInput.addEventListener('change', (e) => {
@@ -154,63 +129,72 @@ if (fileInput) {
         reader.onload = (event) => {
             archivoSvgContenido = event.target.result;
             if (openscadInstance) {
-                // Guarda el SVG en el disco virtual usando siempre el alias interno exigido por tu script
                 openscadInstance.FS.writeFile("diseno.svg", archivoSvgContenido);
             }
-            alert("¡Archivo '" + file.name + "' cargado de forma correcta!");
+            alert(`¡Base de Neón '${file.name}' vinculada con éxito!`);
             compilarDisenoReal();
         };
         reader.readAsText(file);
     });
 }
 
-// EJECUCIÓN DIRECTA DEL MOTOR MATEMÁTICO REAL
+// Compilador en tiempo real
 async function compilarDisenoReal() {
     if (!openscadInstance || !archivoSvgContenido) return;
     
     const loader = document.getElementById('loading');
     loader.style.display = "block";
-    loader.innerText = "Calculando trayectorias vectoriales y ensambles 3D...";
+    loader.innerText = "Vaciando canales de Neón Flex en el vector 3D...";
 
-    // Recolectamos el estado de los controles de la web
+    // Armando cadena de variables modificadas para inyectar sobreescribiendo el .scad
     let variablesModificadas = "$fn = 60;\n";
-    const inputs = document.querySelectorAll('#sidebar input[type="range"], #sidebar select');
-    inputs.forEach(input => {
-        const idVar = input.id.replace('param-', '');
-        const valor = isNaN(input.value) ? `"${input.value}"` : input.value;
-        variablesModificadas += `${idVar} = ${valor};\n`;
+    configuracionNeonValores.forEach(item => {
+        if (item.tipo === "seccion") return;
+        const input = document.getElementById(`param-${item.id}`);
+        if (input) {
+            let valor = input.value;
+            // Si es un string y no es un número puro, lo envolvemos con comillas para OpenSCAD
+            if (isNaN(valor)) {
+                valor = `"${valor}"`;
+            }
+            variablesModificadas += `${item.id} = ${valor};\n`;
+        }
     });
 
     try {
-        // Buscamos el archivo estructural .scad que tienes en tu servidor de GitHub
         const response = await fetch('Generador_Letras_PRO_v5.scad');
         const scriptOriginalCompleto = await response.text();
         
-        // Unimos tus funciones originales con las variables modificadas por el cliente
+        // Unificamos las variables de los deslizadores con la lógica interna del script .scad
         const codigoFinalParaCompilar = variablesModificadas + "\n" + scriptOriginalCompleto;
         
-        // Guardamos y ejecutamos la compilación real sin geometrías falsas
         openscadInstance.FS.writeFile("input.scad", codigoFinalParaCompilar);
-        
-        // El motor procesa el script y dibuja el letrero real en la pantalla derecha
         await openscadInstance.compile("input.scad");
         loader.style.display = "none";
     } catch (err) {
-        console.error("Error crítico en compilación OpenSCAD:", err);
-        loader.innerText = "Error al procesar el archivo. Verifica los nodos del SVG.";
+        console.error("Error al compilar Neón:", err);
+        loader.innerText = "Error matemático en el trazo del SVG.";
     }
 }
 
-// BOTÓN EXPORTAR STL
+// Botón de ejecución manual por si no compila automáticamente
+const btnRender = document.getElementById('btn-render');
+if (btnRender) {
+    btnRender.addEventListener('click', () => {
+        compilarDisenoReal();
+    });
+}
+
+// Exportación de STL limpia
 document.getElementById('btn-export').addEventListener('click', async () => {
     if (!openscadInstance || !archivoSvgContenido) {
-        alert("Por favor, sube primero tu diseño en formato SVG.");
+        alert("Primero debes seleccionar un archivo SVG.");
         return;
     }
     
     const loader = document.getElementById('loading');
     loader.style.display = "block";
-    loader.innerText = "Generando malla STL de producción...";
+    loader.innerText = "Generando archivo STL para impresión 3D...";
 
     await openscadInstance.generateSTL("input.scad", "produccion.stl");
     loader.style.display = "none";
@@ -219,6 +203,6 @@ document.getElementById('btn-export').addEventListener('click', async () => {
     const blob = new Blob([stlBuffer], { type: "application/octet-stream" });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = "Letra_Corporea_FunesDesign.stl";
+    link.download = "Letrero_NeonFlex_FunesDesign.stl";
     link.click();
 });
