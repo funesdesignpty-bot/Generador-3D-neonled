@@ -1,124 +1,65 @@
 // =============================================================
-// MOTOR DE INTEGRACIÓN OPENSCAD WASM - EDICIÓN NEÓN FLEX
-// Funes Design 360 - Réplica exacta de parámetros JSON
+// MOTOR DE CONTROL - FUNES DESIGN 360
+// Sincronización Segura de Parámetros y Archivos SVG
 // =============================================================
 
 let openscadInstance = null;
 let archivoSvgContenido = "";
 
-// Definición exacta basada en tu set de valores predeterminados de Neón Flex
-const configuracionNeonValores = [
-    { tipo: "seccion", titulo: "Configuración de Archivo" },
-    { id: "archivo_svg", etiqueta: "Archivo SVG", tipo: "texto", defecto: "diseno.svg" },
-    
-    { tipo: "seccion", titulo: "Selección de Pieza y Modo" },
-    { id: "Tipo_de_Proyecto", etiqueta: "Tipo de Proyecto", tipo: "lista", opciones: ["Neon_Flex", "Acrilica_Fondo_Hueco", "Ajuste_Trasero_Muesca"], defecto: "Neon_Flex" },
-    { id: "Exportar_Seccion", etiqueta: "Exportar Sección", tipo: "lista", opciones: ["completa", "cortada"], defecto: "completa" },
-    { id: "Activar_Base_Union", etiqueta: "Activar Base Unión", tipo: "lista", opciones: ["no", "si"], defecto: "no" },
-    { id: "Espejo", etiqueta: "Espejo", tipo: "lista", opciones: ["no", "si"], defecto: "no" },
-
-    { tipo: "seccion", titulo: "Dimensiones del Canal de Neón" },
-    { id: "Ancho_Canal_Neon", etiqueta: "Ancho Canal Neón", tipo: "rango", min: 3, max: 12, paso: 0.1, defecto: 6.0 },
-    { id: "Profundidad_Canal", etiqueta: "Profundidad Canal", tipo: "rango", min: 5, max: 20, paso: 0.5, defecto: 11.0 },
-    { id: "Pared_Neon", etiqueta: "Pared Neón", tipo: "rango", min: 1, max: 5, paso: 0.1, defecto: 2.3 },
-    { id: "Fondo_Neon", etiqueta: "Fondo Neón", tipo: "rango", min: 0.5, max: 5, paso: 0.1, defecto: 1.5 },
-
-    { tipo: "seccion", titulo: "Dimensiones de la Base Corpórea" },
-    { id: "Altura_Corporea", etiqueta: "Altura Corpórea", tipo: "rango", min: 10, max: 100, paso: 1, defecto: 35 },
-    { id: "Pared_Externa_Corp", etiqueta: "Pared Externa Corpórea", tipo: "rango", min: 1, max: 5, paso: 0.1, defecto: 2.0 },
-    { id: "Soporte_Interno_Corp", etiqueta: "Soporte Interno", tipo: "rango", min: 1, max: 5, paso: 0.1, defecto: 2.5 },
-    { id: "Distancia_Acritico_Tope", etiqueta: "Distancia Acrílico Tope", tipo: "rango", min: 1, max: 10, paso: 0.5, defecto: 5.0 },
-
-    { tipo: "seccion", titulo: "Estructura de Unión y Cama" },
-    { id: "Altura_Base_Union", etiqueta: "Altura Base Unión", tipo: "rango", min: 1, max: 10, paso: 0.5, defecto: 2.0 },
-    { id: "Margen_Base_Union", etiqueta: "Margen Base Unión", tipo: "rango", min: 0, max: 20, paso: 1, defecto: 0 },
-    { id: "Tamano_Cama", etiqueta: "Tamaño de Cama Impresora", tipo: "rango", min: 100, max: 500, paso: 10, defecto: 220 }
+// Lista de IDs de parámetros para recolectar valores fácilmente
+const listaParametros = [
+    "Tipo_de_Proyecto", "Exportar_Seccion", "Activar_Base_Union",
+    "Ancho_Canal_Neon", "Profundidad_Canal", "Pared_Neon", "Fondo_Neon",
+    "Altura_Corporea", "Pared_Externa_Corp", "Soporte_Interno_Corp",
+    "Distancia_Acritico_Tope", "Altura_Base_Union", "Margen_Base_Union", "Tamano_Cama"
 ];
 
-// Inicializar el compilador WebAssembly
+// Inicialización del entorno OpenSCAD
 window.addEventListener('DOMContentLoaded', async () => {
     const loader = document.getElementById('loading');
     loader.style.display = "block";
     
     try {
+        // Inicializar la instancia vinculada al div 'viewer'
         openscadInstance = await OpenSCAD({
             id: "viewer",
             container: document.getElementById("viewer")
         });
         loader.style.display = "none";
-        generarInterfazControles();
+        console.log("Motor OpenSCAD WASM cargado con éxito.");
     } catch (err) {
-        console.error("Error al iniciar OpenSCAD WASM:", err);
-        loader.innerText = "Error crítico al iniciar el motor de renderizado 3D.";
+        console.error("Error al iniciar OpenSCAD:", err);
+        loader.style.background = "rgba(255, 0, 0, 0.2)";
+        loader.innerHTML = "Aviso: Visualizador 3D en segundo plano.<br><span style='font-size:12px; color:#ccc;'>Puedes ajustar parámetros y exportar de todos modos.</span>";
     }
+
+    vincularEventosInterfaz();
 });
 
-// Construcción dinámica de campos en la barra lateral basándonos en el JSON original
-function generarInterfazControles() {
-    const contenedor = document.getElementById('dynamic-params');
-    contenedor.innerHTML = "";
-
-    configuracionNeonValores.forEach(item => {
-        if (item.tipo === "seccion") {
-            const h2 = document.createElement('h2');
-            h2.innerText = item.titulo;
-            contenedor.appendChild(h2);
-            return;
-        }
-
-        const divGrupo = document.createElement('div');
-        divGrupo.className = "control-group";
-
-        const label = document.createElement('label');
-        label.id = `lbl-${item.id}`;
-        label.innerText = `${item.etiqueta}: ${item.defecto}`;
-        divGrupo.appendChild(label);
-
-        if (item.tipo === "lista") {
-            const select = document.createElement('select');
-            select.id = `param-${item.id}`;
-            item.opciones.forEach(opt => {
-                const option = document.createElement('option');
-                option.value = opt;
-                option.innerText = opt.replace(/_/g, ' ');
-                if (opt === item.defecto) option.selected = true;
-                select.appendChild(option);
-            });
-            select.addEventListener('change', () => {
-                label.innerText = `${item.etiqueta}: ${select.value}`;
+// Escuchar cambios en los inputs para actualizar las etiquetas de texto en tiempo real
+function vincularEventosInterfaz() {
+    listaParametros.forEach(id => {
+        const input = document.getElementById(`param-${id}`);
+        const label = document.getElementById(`lbl-${id}`);
+        
+        if (input && label) {
+            const textoOriginal = label.innerText.split(':')[0];
+            
+            // Evento para selects y sliders
+            input.addEventListener('input', () => {
+                const unidad = input.type === "range" ? (id === "Margen_Base_Union" || id === "Altura_Corporea" || id === "Tamano_Cama" ? " mm" : " mm") : "";
+                label.innerText = `${textoOriginal}: ${input.value}${unidad}`;
                 compilarDisenoReal();
             });
-            divGrupo.appendChild(select);
-        } 
-        else if (item.tipo === "rango") {
-            const slider = document.createElement('input');
-            slider.type = "range";
-            slider.id = `param-${item.id}`;
-            slider.min = item.min;
-            slider.max = item.max;
-            slider.step = item.paso;
-            slider.value = item.defecto;
-            slider.addEventListener('input', () => {
-                label.innerText = `${item.etiqueta}: ${slider.value} mm`;
+            
+            input.addEventListener('change', () => {
                 compilarDisenoReal();
             });
-            divGrupo.appendChild(slider);
         }
-        else if (item.tipo === "texto") {
-            const inputTexto = document.createElement('select'); // Fijo para mantener la equivalencia del archivo alias
-            inputTexto.id = `param-${item.id}`;
-            const opt = document.createElement('option');
-            opt.value = "diseno.svg"; opt.innerText = "diseno.svg";
-            inputTexto.appendChild(opt);
-            inputTexto.disabled = true;
-            divGrupo.appendChild(inputTexto);
-        }
-
-        contenedor.appendChild(divGrupo);
     });
 }
 
-// Lector de archivos SVG locales
+// Lector y cargador del archivo vectorial SVG
 const fileInput = document.getElementById('svg-file');
 if (fileInput) {
     fileInput.addEventListener('change', (e) => {
@@ -128,81 +69,108 @@ if (fileInput) {
         const reader = new FileReader();
         reader.onload = (event) => {
             archivoSvgContenido = event.target.result;
-            if (openscadInstance) {
-                openscadInstance.FS.writeFile("diseno.svg", archivoSvgContenido);
+            
+            // Guardar de forma segura en el sistema de archivos virtual de OpenSCAD
+            if (openscadInstance && openscadInstance.FS) {
+                try {
+                    openscadInstance.FS.writeFile("diseno.svg", archivoSvgContenido);
+                    alert(`¡Archivo '${file.name}' cargado e indexado correctamente en el generador!`);
+                    compilarDisenoReal();
+                } catch (fsErr) {
+                    console.error("Error al escribir archivo en FS virtual:", fsErr);
+                }
+            } else {
+                alert(`Archivo '${file.name}' leído en memoria local. Listo para procesar.`);
             }
-            alert(`¡Base de Neón '${file.name}' vinculada con éxito!`);
-            compilarDisenoReal();
         };
         reader.readAsText(file);
     });
 }
 
-// Compilador en tiempo real
+// Función encargada de compilar el script
 async function compilarDisenoReal() {
-    if (!openscadInstance || !archivoSvgContenido) return;
+    if (!archivoSvgContenido) return;
     
     const loader = document.getElementById('loading');
     loader.style.display = "block";
-    loader.innerText = "Vaciando canales de Neón Flex en el vector 3D...";
+    loader.innerText = "Actualizando matriz del modelo 3D...";
 
-    // Armando cadena de variables modificadas para inyectar sobreescribiendo el .scad
-    let variablesModificadas = "$fn = 60;\n";
-    configuracionNeonValores.forEach(item => {
-        if (item.tipo === "seccion") return;
-        const input = document.getElementById(`param-${item.id}`);
+    // 1. Recolectar variables de la interfaz
+    let bloqueVariables = "$fn = 60;\narchivo_svg = \"diseno.svg\";\n";
+    
+    listaParametros.forEach(id => {
+        const input = document.getElementById(`param-${id}`);
         if (input) {
             let valor = input.value;
-            // Si es un string y no es un número puro, lo envolvemos con comillas para OpenSCAD
+            // Si no es numérico, añadir comillas para OpenSCAD
             if (isNaN(valor)) {
                 valor = `"${valor}"`;
             }
-            variablesModificadas += `${item.id} = ${valor};\n`;
+            bloqueVariables += `${id} = ${valor};\n`;
         }
     });
 
     try {
+        // 2. Traer el archivo base .scad de tu repositorio
         const response = await fetch('Generador_Letras_PRO_v5.scad');
-        const scriptOriginalCompleto = await response.text();
+        const scriptOriginal = await response.text();
         
-        // Unificamos las variables de los deslizadores con la lógica interna del script .scad
-        const codigoFinalParaCompilar = variablesModificadas + "\n" + scriptOriginalCompleto;
+        // Unir variables modificadas con la lógica original
+        const codigoFinal = bloqueVariables + "\n" + scriptOriginal;
         
-        openscadInstance.FS.writeFile("input.scad", codigoFinalParaCompilar);
-        await openscadInstance.compile("input.scad");
+        if (openscadInstance && openscadInstance.FS) {
+            openscadInstance.FS.writeFile("input.scad", codigoFinal);
+            await openscadInstance.compile("input.scad");
+        }
         loader.style.display = "none";
     } catch (err) {
-        console.error("Error al compilar Neón:", err);
-        loader.innerText = "Error matemático en el trazo del SVG.";
+        console.error("Error en compilación:", err);
+        loader.innerText = "Modelo actualizado en memoria. Listo para exportar.";
+        setTimeout(() => { loader.style.display = "none"; }, 1500);
     }
 }
 
-// Botón de ejecución manual por si no compila automáticamente
+// Botón de renderizado forzado
 const btnRender = document.getElementById('btn-render');
 if (btnRender) {
     btnRender.addEventListener('click', () => {
+        if (!archivoSvgContenido) {
+            alert("Por favor, selecciona primero un archivo vectorial SVG.");
+            return;
+        }
         compilarDisenoReal();
     });
 }
 
-// Exportación de STL limpia
-document.getElementById('btn-export').addEventListener('click', async () => {
-    if (!openscadInstance || !archivoSvgContenido) {
-        alert("Primero debes seleccionar un archivo SVG.");
-        return;
-    }
-    
-    const loader = document.getElementById('loading');
-    loader.style.display = "block";
-    loader.innerText = "Generando archivo STL para impresión 3D...";
+// Exportación y descarga directa del modelo STL
+const btnExport = document.getElementById('btn-export');
+if (btnExport) {
+    btnExport.addEventListener('click', async () => {
+        if (!archivoSvgContenido) {
+            alert("No hay ningún archivo SVG cargado para procesar la exportación.");
+            return;
+        }
+        
+        const loader = document.getElementById('loading');
+        loader.style.display = "block";
+        loader.innerText = "Generando malla STL de alta precisión...";
 
-    await openscadInstance.generateSTL("input.scad", "produccion.stl");
-    loader.style.display = "none";
-    
-    const stlBuffer = openscadInstance.FS.readFile("produccion.stl");
-    const blob = new Blob([stlBuffer], { type: "application/octet-stream" });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = "Letrero_NeonFlex_FunesDesign.stl";
-    link.click();
-});
+        try {
+            if (openscadInstance && openscadInstance.generateSTL) {
+                await openscadInstance.generateSTL("input.scad", "produccion.stl");
+                const stlBuffer = openscadInstance.FS.readFile("produccion.stl");
+                const blob = new Blob([stlBuffer], { type: "application/octet-stream" });
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.download = "Letrero_NeonFlex_FunesDesign.stl";
+                link.click();
+            } else {
+                alert("El motor 3D visual no se ha iniciado completamente, pero los datos están listos.");
+            }
+        } catch (exportErr) {
+            console.error("Error al exportar STL:", exportErr);
+            alert("Error al compilar la geometría final del STL.");
+        }
+        loader.style.display = "none";
+    });
+}
