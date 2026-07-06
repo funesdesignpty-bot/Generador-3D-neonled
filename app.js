@@ -1,58 +1,33 @@
-// MOTOR DE EMERGENCIA - LECTURA TOTAL
 let openscadInstance = null;
 const NOMBRE_ARCHIVO_SCAD = "letras.scad";
 
-async function iniciarMotor() {
-    const contenedor = document.getElementById('dynamic-params');
-    const loader = document.getElementById('loading');
+// 1. Inicialización ultra simple
+window.addEventListener('DOMContentLoaded', async () => {
+    openscadInstance = await OpenSCAD({ id: "viewer", container: document.getElementById("viewer") });
     
-    try {
-        const response = await fetch(NOMBRE_ARCHIVO_SCAD + "?nocache=" + Math.random());
-        const sc = await response.text();
-        
-        // Iniciamos el motor SIEMPRE, aunque el SCAD falle
-        openscadInstance = await OpenSCAD({ id: "viewer", container: document.getElementById("viewer") });
-        
-        // Construcción forzada
-        const lineas = sc.split('\n');
-        lineas.forEach(linea => {
-            if (linea.includes("=") && linea.includes("// [") && !linea.startsWith("//")) {
-                let [izq, der] = linea.split("=");
-                let nombre = izq.trim();
-                let configuracion = der.split("//")[1].replace(/[\[\]]/g, "").trim();
-                let valor = der.split("//")[0].replace(";", "").trim();
+    // Cargamos el archivo SCAD base inmediatamente
+    const response = await fetch(NOMBRE_ARCHIVO_SCAD);
+    const script = await response.text();
+    
+    // Guardamos el script en el motor inmediatamente
+    openscadInstance.FS.writeFile("input.scad", script);
+    
+    // Listener para el SVG
+    document.getElementById('svg-file').addEventListener('change', handleFile);
+});
 
-                const div = document.createElement('div');
-                div.className = "control-group";
-                div.innerHTML = `<label>${nombre}</label>`;
-                
-                if (configuracion.includes(":")) {
-                    let [min, step, max] = configuracion.split(":");
-                    div.innerHTML += `<input type="range" id="p-${nombre}" min="${min}" max="${max}" step="${step}" value="${valor}">`;
-                } else {
-                    div.innerHTML += `<select id="p-${nombre}">` + configuracion.split(",").map(o => `<option value="${o.trim()}">${o.trim()}</option>`).join("") + `</select>`;
-                }
-                contenedor.appendChild(div);
-            }
-        });
+// 2. Función para manejar el SVG y renderizar
+async function handleFile(e) {
+    const file = e.target.files[0];
+    const reader = new FileReader();
+    
+    reader.onload = async (event) => {
+        // Guardamos el SVG como el archivo que el SCAD espera
+        openscadInstance.FS.writeFile("diseno.svg", event.target.result);
         
-        document.getElementById('btn-render').addEventListener('click', compilarForzado);
-        loader.style.display = "none";
-    } catch(e) {
-        console.error("Error crítico:", e);
-    }
+        // ¡ESTO ES LO QUE FALTABA! El comando para renderizar
+        await openscadInstance.compile("input.scad");
+        console.log("Renderizado ejecutado");
+    };
+    reader.readAsText(file);
 }
-
-async function compilarForzado() {
-    let inputs = document.querySelectorAll('input, select');
-    let nuevoScad = await (await fetch(NOMBRE_ARCHIVO_SCAD)).text();
-    inputs.forEach(el => {
-        let nombre = el.id.replace("p-", "");
-        let valor = isNaN(el.value) ? `"${el.value}"` : el.value;
-        nuevoScad = nuevoScad.replace(new RegExp(`${nombre}\\s*=\\s*[^;]+;`), `${nombre} = ${valor};`);
-    });
-    openscadInstance.FS.writeFile("input.scad", nuevoScad);
-    await openscadInstance.compile("input.scad");
-}
-
-iniciarMotor();
