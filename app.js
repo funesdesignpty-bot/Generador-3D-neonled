@@ -24,12 +24,10 @@ window.addEventListener('DOMContentLoaded', async () => {
     setEstado("Cargando el motor 3D (puede tardar unos segundos la primera vez)...");
 
     try {
-        // 1. Descargamos el texto del .scad (para leer los parámetros)
         const resp = await fetch(NOMBRE_ARCHIVO_SCAD + "?v=" + new Date().getTime());
         if (!resp.ok) throw new Error("No se encontró " + NOMBRE_ARCHIVO_SCAD + " junto a index.html");
         scadOriginal = await resp.text();
 
-        // 2. Arrancamos el motor real de OpenSCAD (WASM), capturando sus mensajes
         instancia = await OpenSCAD({
             noInitialRun: true,
             print: (msg) => agregarLog(msg),
@@ -38,10 +36,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         addFonts(instancia);
         addMCAD(instancia);
 
-        // 3. Construimos los sliders/selectores según lo que diga el .scad
         construirInterfaz(scadOriginal);
-
-        // 4. Preparamos el visor 3D (vacío por ahora, hasta que generes un modelo)
         initViewer3D();
 
         setEstado("Listo. Sube tu archivo SVG y presiona “Generar Modelo 3D”.");
@@ -85,7 +80,6 @@ document.getElementById('svg-file').addEventListener('change', (evento) => {
     lector.onerror = () => setEstado("❌ No se pudo leer ese archivo SVG.");
     lector.readAsArrayBuffer(archivo);
 });
-});
 
 // -------------------------------------------------------------
 // BOTONES
@@ -101,7 +95,6 @@ function construirInterfaz(scadText) {
     contenedor.innerHTML = "";
     tiposControl = {};
 
-    // Busca líneas del tipo:  Nombre = valor; // [rango o lista]
     const regexParam = /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.+?);\s*\/\/\s*\[(.+?)\]\s*$/;
 
     scadText.split('\n').forEach((linea) => {
@@ -120,7 +113,6 @@ function construirInterfaz(scadText) {
         div.appendChild(label);
 
         if (rango.includes(":")) {
-            // Es un control deslizante (slider): [min:paso:max]
             const [min, step, max] = rango.split(":").map((s) => s.trim());
             const fila = document.createElement('div');
             fila.style.display = "flex";
@@ -147,7 +139,6 @@ function construirInterfaz(scadText) {
             div.appendChild(fila);
             tiposControl[nombre] = "number";
         } else {
-            // Es un selector (lista de opciones separadas por coma)
             const opciones = rango.split(",").map((s) => s.trim());
             const select = document.createElement('select');
             select.id = "param-" + nombre;
@@ -167,7 +158,6 @@ function construirInterfaz(scadText) {
     });
 }
 
-// Reconstruye el texto del .scad reemplazando cada parámetro por el valor actual del control
 function reconstruirScad(original) {
     const regexAsignacion = /^(\s*)([A-Za-z_][A-Za-z0-9_]*)(\s*=\s*)(.+?)(;\s*(\/\/.*)?)$/;
 
@@ -177,7 +167,7 @@ function reconstruirScad(original) {
 
         const nombre = m[2];
         const tipo = tiposControl[nombre];
-        if (!tipo) return linea; // este parámetro no tiene control (ej. archivo_svg), se deja igual
+        if (!tipo) return linea;
 
         const el = document.getElementById("param-" + nombre);
         if (!el) return linea;
@@ -200,106 +190,7 @@ async function compilar() {
     try {
         const scadFinal = reconstruirScad(scadOriginal);
 
-        // Escribimos ambos archivos en el "disco virtual" del motor
         instancia.FS.writeFile("/input.scad", scadFinal);
         instancia.FS.writeFile("/diseno.svg", svgTexto);
 
-        // Borramos cualquier resultado anterior para detectar errores reales
-        try { instancia.FS.unlink("/output.stl"); } catch (e) {}
-
-        instancia.callMain(["/input.scad", "--enable=manifold", "-o", "/output.stl"]);
-
-        const datos = instancia.FS.readFile("/output.stl");
-        ultimoSTL = datos;
-        mostrarSTL(datos);
-        setEstado("✅ Modelo generado. Ya puedes descargar el STL.");
-    } catch (err) {
-        console.error(err);
-        setEstado("❌ No se pudo generar el modelo. Revisa el registro de abajo.");
-        agregarLog("❌ " + err.message);
-    } finally {
-        document.getElementById('btn-render').disabled = false;
-    }
-}
-
-// -------------------------------------------------------------
-// EXPORTAR STL (botón "Descargar archivo STL")
-// -------------------------------------------------------------
-function exportarSTL() {
-    if (!ultimoSTL) { setEstado("Primero genera un modelo (botón ⚡)."); return; }
-    const blob = new Blob([ultimoSTL], { type: "application/octet-stream" });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = "letra_funes_design.stl";
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-}
-
-// -------------------------------------------------------------
-// VISOR 3D (three.js)
-// -------------------------------------------------------------
-function initViewer3D() {
-    const contenedor = document.getElementById('viewer');
-
-    three.scene = new THREE.Scene();
-    three.scene.background = new THREE.Color(0x1a1a26);
-
-    three.camera = new THREE.PerspectiveCamera(45, contenedor.clientWidth / contenedor.clientHeight, 0.1, 5000);
-    three.camera.position.set(0, -180, 180);
-
-    three.renderer = new THREE.WebGLRenderer({ antialias: true });
-    three.renderer.setSize(contenedor.clientWidth, contenedor.clientHeight);
-    contenedor.appendChild(three.renderer.domElement);
-
-    three.controls = new THREE.OrbitControls(three.camera, three.renderer.domElement);
-
-    three.scene.add(new THREE.AmbientLight(0x909090));
-    const luz = new THREE.DirectionalLight(0xffffff, 0.9);
-    luz.position.set(1, 1, 1);
-    three.scene.add(luz);
-
-    window.addEventListener('resize', () => {
-        three.camera.aspect = contenedor.clientWidth / contenedor.clientHeight;
-        three.camera.updateProjectionMatrix();
-        three.renderer.setSize(contenedor.clientWidth, contenedor.clientHeight);
-    });
-
-    (function animar() {
-        requestAnimationFrame(animar);
-        three.controls.update();
-        three.renderer.render(three.scene, three.camera);
-    })();
-}
-
-function mostrarSTL(datosUint8) {
-    const loader = new THREE.STLLoader();
-    const geometria = loader.parse(datosUint8.buffer);
-    geometria.center();
-
-    if (three.mesh) three.scene.remove(three.mesh);
-
-    const material = new THREE.MeshPhongMaterial({ color: 0x00b4d8, specular: 0x222222, shininess: 80 });
-    three.mesh = new THREE.Mesh(geometria, material);
-    three.scene.add(three.mesh);
-}
-
-// -------------------------------------------------------------
-// UTILIDADES DE INTERFAZ
-// -------------------------------------------------------------
-function setEstado(texto) {
-    const loader = document.getElementById('loading');
-    loader.style.display = "block";
-    loader.innerText = texto;
-    clearTimeout(setEstado._t);
-    setEstado._t = setTimeout(() => { loader.style.display = "none"; }, 4000);
-}
-
-function agregarLog(msg) {
-    const log = document.getElementById('log');
-    if (!log) return;
-    const linea = document.createElement('div');
-    linea.innerText = msg;
-    log.appendChild(linea);
-    log.scrollTop = log.scrollHeight;
-}
+        try {
