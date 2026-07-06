@@ -193,4 +193,102 @@ async function compilar() {
         instancia.FS.writeFile("/input.scad", scadFinal);
         instancia.FS.writeFile("/diseno.svg", svgTexto);
 
-        try {
+        try { instancia.FS.unlink("/output.stl"); } catch (e) {}
+
+        instancia.callMain(["/input.scad", "-o", "/output.stl"]);
+
+        const datos = instancia.FS.readFile("/output.stl");
+        ultimoSTL = datos;
+        mostrarSTL(datos);
+        setEstado("✅ Modelo generado. Ya puedes descargar el STL.");
+    } catch (err) {
+        console.error(err);
+        const detalle = (err && err.message) ? err.message : "revisa los mensajes de arriba en el registro (⚠️), ahí suele estar la causa real.";
+        setEstado("❌ No se pudo generar el modelo. Revisa el registro de abajo.");
+        agregarLog("❌ Falló la generación: " + detalle);
+    } finally {
+        document.getElementById('btn-render').disabled = false;
+    }
+}
+
+// -------------------------------------------------------------
+// EXPORTAR STL (botón "Descargar archivo STL")
+// -------------------------------------------------------------
+function exportarSTL() {
+    if (!ultimoSTL) { setEstado("Primero genera un modelo (botón ⚡)."); return; }
+    const blob = new Blob([ultimoSTL], { type: "application/octet-stream" });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = "letra_funes_design.stl";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+}
+
+// -------------------------------------------------------------
+// VISOR 3D (three.js)
+// -------------------------------------------------------------
+function initViewer3D() {
+    const contenedor = document.getElementById('viewer');
+
+    three.scene = new THREE.Scene();
+    three.scene.background = new THREE.Color(0x1a1a26);
+
+    three.camera = new THREE.PerspectiveCamera(45, contenedor.clientWidth / contenedor.clientHeight, 0.1, 5000);
+    three.camera.position.set(0, -180, 180);
+
+    three.renderer = new THREE.WebGLRenderer({ antialias: true });
+    three.renderer.setSize(contenedor.clientWidth, contenedor.clientHeight);
+    contenedor.appendChild(three.renderer.domElement);
+
+    three.controls = new THREE.OrbitControls(three.camera, three.renderer.domElement);
+
+    three.scene.add(new THREE.AmbientLight(0x909090));
+    const luz = new THREE.DirectionalLight(0xffffff, 0.9);
+    luz.position.set(1, 1, 1);
+    three.scene.add(luz);
+
+    window.addEventListener('resize', () => {
+        three.camera.aspect = contenedor.clientWidth / contenedor.clientHeight;
+        three.camera.updateProjectionMatrix();
+        three.renderer.setSize(contenedor.clientWidth, contenedor.clientHeight);
+    });
+
+    (function animar() {
+        requestAnimationFrame(animar);
+        three.controls.update();
+        three.renderer.render(three.scene, three.camera);
+    })();
+}
+
+function mostrarSTL(datosUint8) {
+    const loader = new THREE.STLLoader();
+    const geometria = loader.parse(datosUint8.buffer);
+    geometria.center();
+
+    if (three.mesh) three.scene.remove(three.mesh);
+
+    const material = new THREE.MeshPhongMaterial({ color: 0x00b4d8, specular: 0x222222, shininess: 80 });
+    three.mesh = new THREE.Mesh(geometria, material);
+    three.scene.add(three.mesh);
+}
+
+// -------------------------------------------------------------
+// UTILIDADES DE INTERFAZ
+// -------------------------------------------------------------
+function setEstado(texto) {
+    const loader = document.getElementById('loading');
+    loader.style.display = "block";
+    loader.innerText = texto;
+    clearTimeout(setEstado._t);
+    setEstado._t = setTimeout(() => { loader.style.display = "none"; }, 4000);
+}
+
+function agregarLog(msg) {
+    const log = document.getElementById('log');
+    if (!log) return;
+    const linea = document.createElement('div');
+    linea.innerText = msg;
+    log.appendChild(linea);
+    log.scrollTop = log.scrollHeight;
+}
