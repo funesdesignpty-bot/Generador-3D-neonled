@@ -1,13 +1,13 @@
 // =============================================================
 // MOTOR DE INTEGRACIÓN TOTAL OPENSCAD WASM - FUNES DESIGN 360
-// Ejecución fiel del script original v5.8 con mapeo virtual de SVG
+// Corrección de renderizado y lectura dinámica de variables v5.8
 // =============================================================
 
 let openscadInstance = null;
 let archivoSvgContenido = "";
 let scriptBaseOriginal = "";
 
-// Cargamos de forma textual exacta la cabecera de tu archivo original para clonar el Customizer
+// Clonamos exactamente los parámetros de tu archivo v5.8 para armar el panel izquierdo
 scriptBaseOriginal = `
 /* [1. ARCHIVO VECTORIAL] */
 archivo_svg = "diseno.svg"; 
@@ -29,35 +29,41 @@ Grosor_Acrilico_Trasero = 3.0; // [1:0.1:10]
 Ancho_Soporte_Interno = 2.5; // [1:0.1:15]
 
 /* [5. CONFIG: MUESCA PLANA AJUSTABLE (TRASERA Y FRONTAL)] */
-Altura_Muesca_Z = 1.6; // [0.4:0.1:20]
 Ancho_Muesca_X = 2.5; // [1:0.1:15]
+Altura_Muesca_Z = 1.6; // [0.4:0.1:20]
 
-/* [6. CONFIG: SOPORTES TRIANGULARES] */
+/* [6. CONFIG: SOPORTE TRIANGULARES] */
 Tamano_Triangulo = 3.6; // [1:0.1:15]
 Grosor_Material_Acrilico = 3.0; // [1:0.1:10]
 Altura_Soporte_Inf = 3.0; // [1:0.1:20]
 
-/* [7. CONFIG: TAPAS IMPRESAS (TRASERA / FRONTAL)] */
-Grosor_Base_Tapa = 3.0; // [0.5:0.1:10]
+/* [7. CONFIG: TAPA FRONTAL CON ENCASTE] */
+Grosor_Base_Tapa_Frontal = 3.0; // [0.5:0.1:10]
+Altura_Pestana_Frontal = 4.0; // [0:0.1:30]
+Grosor_Pestana_Frontal = 1.5; // [0.5:0.1:5]
+Distancia_Borde_Pestana_Frontal = 2.0; // [0:0.1:10]
+Holgura_Tapa_Frontal = 0.15; // [0:0.05:1]
+
+/* [8. CONFIG: TAPA TRASERA ENCAJABLE TRADICIONAL] */
+Grosor_Base_Tapa = 2.0; // [0.5:0.1:10]
 Altura_Pared_Tapa = 5.0; // [1:0.1:30]
 Grosor_Pared_Tapa = 1.5; // [0.5:0.1:5]
-Holgura_Tapa = 0.15; // [0:0.05:1]
+Holgura_Tapa = 0.2; // [0:0.05:1]
 
-/* [8. CONFIG: NUEVOS PARÁMETROS - BLOQUEADOR DE LUZ] */
+/* [9. CONFIG: BLOQUEADOR DE LUZ] */
 Pared_Bloqueador = 0.8; // [0.4:0.1:2]
 Holgura_Bloqueador = 0.15; // [0:0.05:1]
 
-/* [9. CALIDAD] */
-$fn = 60; // [30:10:120]
+/* [10. CONFIG: HUECO DE ENCASTRADO PARA BASE CNC] */
+Holgura_Corte_Base_CNC = 0.25; // [0:0.05:2]
 `;
 
-// Inicializar el compilador oficial OpenSCAD de la Web
+// Inicializar el entorno WebAssembly de OpenSCAD
 window.addEventListener('DOMContentLoaded', async () => {
     const loader = document.getElementById('loading');
     loader.style.display = "block";
     
     try {
-        // Inicializa el contenedor WebAssembly de OpenSCAD.org
         openscadInstance = await OpenSCAD({
             id: "viewer",
             container: document.getElementById("viewer")
@@ -66,11 +72,11 @@ window.addEventListener('DOMContentLoaded', async () => {
         procesarEInyectarParametros(scriptBaseOriginal);
     } catch (err) {
         console.error("Error al arrancar OpenSCAD WASM:", err);
-        loader.innerText = "Error al iniciar el motor 3D en este navegador.";
+        loader.innerText = "Error al iniciar el motor matemático 3D.";
     }
 });
 
-// --- LECTOR DINÁMICO DE INTERFAZ ORIGINAL ---
+// GENERADOR DINÁMICO DE DESLIZADORES E INTERFAZ
 function procesarEInyectarParametros(scadText) {
     const contenedor = document.getElementById('dynamic-params');
     contenedor.innerHTML = "";
@@ -137,7 +143,7 @@ function procesarEInyectarParametros(scadText) {
     });
 }
 
-// --- INTERCEPCIÓN DINÁMICA DE CUALQUIER ARCHIVO SVG ---
+// CAPTURA VIRTUAL DE CUALQUIER SVG SUBIDO
 const fileInput = document.getElementById('svg-file');
 if (fileInput) {
     fileInput.addEventListener('change', (e) => {
@@ -147,27 +153,27 @@ if (fileInput) {
         const reader = new FileReader();
         reader.onload = (event) => {
             archivoSvgContenido = event.target.result;
-            // Escribimos el contenido del SVG del cliente en el sistema de archivos virtual con el nombre estático
             if (openscadInstance) {
+                // Guarda el SVG en el disco virtual usando siempre el alias interno exigido por tu script
                 openscadInstance.FS.writeFile("diseno.svg", archivoSvgContenido);
             }
-            alert("¡Diseño '" + file.name + "' cargado y vinculado con éxito!");
+            alert("¡Archivo '" + file.name + "' cargado de forma correcta!");
             compilarDisenoReal();
         };
         reader.readAsText(file);
     });
 }
 
-// --- COMPILADOR OFICIAL OPENSCAD EN ACCIÓN ---
+// EJECUCIÓN DIRECTA DEL MOTOR MATEMÁTICO REAL
 async function compilarDisenoReal() {
     if (!openscadInstance || !archivoSvgContenido) return;
     
     const loader = document.getElementById('loading');
     loader.style.display = "block";
-    loader.innerText = "Compilando mallas corpóreas en tiempo real...";
+    loader.innerText = "Calculando trayectorias vectoriales y ensambles 3D...";
 
-    // Generamos el bloque de variables según los sliders actuales
-    let variablesModificadas = "";
+    // Recolectamos el estado de los controles de la web
+    let variablesModificadas = "$fn = 60;\n";
     const inputs = document.querySelectorAll('#sidebar input[type="range"], #sidebar select');
     inputs.forEach(input => {
         const idVar = input.id.replace('param-', '');
@@ -175,43 +181,44 @@ async function compilarDisenoReal() {
         variablesModificadas += `${idVar} = ${valor};\n`;
     });
 
-    // Descargamos o concatenamos el archivo maestro completo .scad que subiste (Módulos de vaciado, muescas, etc.)
-    // Para simplificar la ejecución nativa, descargamos tu archivo original guardado en el servidor
     try {
+        // Buscamos el archivo estructural .scad que tienes en tu servidor de GitHub
         const response = await fetch('Generador_Letras_PRO_v5.scad');
         const scriptOriginalCompleto = await response.text();
         
-        // Unimos las modificaciones de la web con el cuerpo del código de ingeniería
+        // Unimos tus funciones originales con las variables modificadas por el cliente
         const codigoFinalParaCompilar = variablesModificadas + "\n" + scriptOriginalCompleto;
         
-        // Escribimos el código unificado en la memoria virtual
+        // Guardamos y ejecutamos la compilación real sin geometrías falsas
         openscadInstance.FS.writeFile("input.scad", codigoFinalParaCompilar);
         
-        // Le ordenamos a OpenSCAD compilar el renderizado 3D real
+        // El motor procesa el script y dibuja el letrero real en la pantalla derecha
         await openscadInstance.compile("input.scad");
         loader.style.display = "none";
     } catch (err) {
-        console.error("Error en compilación de geometría:", err);
-        loader.innerText = "Error en la topología del SVG. Revisa las líneas vectoriales.";
+        console.error("Error crítico en compilación OpenSCAD:", err);
+        loader.innerText = "Error al procesar el archivo. Verifica los nodos del SVG.";
     }
 }
 
-// --- ACCIÓN DESCARGA DE STL DE FABRICACIÓN ---
+// BOTÓN EXPORTAR STL
 document.getElementById('btn-export').addEventListener('click', async () => {
     if (!openscadInstance || !archivoSvgContenido) {
-        alert("Sube un archivo SVG para poder exportar.");
+        alert("Por favor, sube primero tu diseño en formato SVG.");
         return;
     }
-    alert("Generando archivo STL definitivo de alta precisión... Espera un momento.");
     
-    // Ejecuta el comando nativo de exportación de OpenSCAD
+    const loader = document.getElementById('loading');
+    loader.style.display = "block";
+    loader.innerText = "Generando malla STL de producción...";
+
     await openscadInstance.generateSTL("input.scad", "produccion.stl");
+    loader.style.display = "none";
     
-    // Descarga automática del archivo al navegador del cliente
     const stlBuffer = openscadInstance.FS.readFile("produccion.stl");
     const blob = new Blob([stlBuffer], { type: "application/octet-stream" });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = "FunesDesign_Letra_Corporea.stl";
+    link.download = "Letra_Corporea_FunesDesign.stl";
     link.click();
 });
