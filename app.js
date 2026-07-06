@@ -1,13 +1,14 @@
 // =============================================================
-// MOTOR COMPILADOR INTEGRAL WASM - FUNES DESIGN 360 v6.0
-// Renderizado 3D en tiempo real para Letras Corpóreas y Neón
+// MOTOR DE INTEGRACIÓN TOTAL OPENSCAD WASM - FUNES DESIGN 360
+// Ejecución fiel del script original v5.8 con mapeo virtual de SVG
 // =============================================================
 
-let svgDataVirtual = "";
-let scene, camera, renderer, controls, currentMesh;
+let openscadInstance = null;
+let archivoSvgContenido = "";
+let scriptBaseOriginal = "";
 
-// Código base maestro extraído de tu archivo v5.scad
-const codigoMasterSCAD = `
+// Cargamos de forma textual exacta la cabecera de tu archivo original para clonar el Customizer
+scriptBaseOriginal = `
 /* [1. ARCHIVO VECTORIAL] */
 archivo_svg = "diseno.svg"; 
 
@@ -50,66 +51,36 @@ Holgura_Bloqueador = 0.15; // [0:0.05:1]
 $fn = 60; // [30:10:120]
 `;
 
-// --- INICIALIZAR ENTORNO INTERACTIVO 3D (THREE.JS) ---
-function initVisor3D() {
-    const container = document.getElementById('viewer');
-    scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x1a1a26);
+// Inicializar el compilador oficial OpenSCAD de la Web
+window.addEventListener('DOMContentLoaded', async () => {
+    const loader = document.getElementById('loading');
+    loader.style.display = "block";
+    
+    try {
+        // Inicializa el contenedor WebAssembly de OpenSCAD.org
+        openscadInstance = await OpenSCAD({
+            id: "viewer",
+            container: document.getElementById("viewer")
+        });
+        loader.style.display = "none";
+        procesarEInyectarParametros(scriptBaseOriginal);
+    } catch (err) {
+        console.error("Error al arrancar OpenSCAD WASM:", err);
+        loader.innerText = "Error al iniciar el motor 3D en este navegador.";
+    }
+});
 
-    camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 1, 1000);
-    camera.position.set(0, -150, 150);
-
-    renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('canvas3d'), antialias: true });
-    renderer.setSize(container.clientWidth, container.clientHeight);
-
-    controls = new THREE.OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
-
-    // Iluminación industrial para apreciar relieves e ingeniería de calce
-    const light1 = new THREE.DirectionalLight(0xffffff, 0.8);
-    light1.position.set(1, 1, 2);
-    scene.add(light1);
-    const light2 = new THREE.DirectionalLight(0x00b4d8, 0.5);
-    light2.position.set(-1, -1, 1);
-    scene.add(light2);
-    const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
-    scene.add(ambientLight);
-
-    // Rejilla de referencia en el suelo (Taller de impresión)
-    const gridHelper = new THREE.GridHelper(300, 30, 0x444455, 0x222233);
-    gridHelper.rotation.x = Math.PI / 2;
-    scene.add(gridHelper);
-
-    window.addEventListener('resize', onWindowResize);
-    animate();
-}
-
-function animate() {
-    requestAnimationFrame(animate);
-    controls.update();
-    renderer.render(scene, camera);
-}
-
-function onWindowResize() {
-    const container = document.getElementById('viewer');
-    camera.aspect = container.clientWidth / container.clientHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(container.clientWidth, container.clientHeight);
-}
-
-// --- EXTRACTOR AUTOMÁTICO DE CAMPOS MAESTROS ---
+// --- LECTOR DINÁMICO DE INTERFAZ ORIGINAL ---
 function procesarEInyectarParametros(scadText) {
     const contenedor = document.getElementById('dynamic-params');
     contenedor.innerHTML = "";
     const lineas = scadText.split('\n');
-    let seccionActual = "";
 
     lineas.forEach(linea => {
         linea = linea.trim();
         if (linea.startsWith("/* [") && linea.includes("] */")) {
-            seccionActual = linea.replace("/* [", "").replace("] */", "");
             const h2 = document.createElement('h2');
-            h2.innerText = seccionActual;
+            h2.innerText = linea.replace("/* [", "").replace("] */", "");
             contenedor.appendChild(h2);
             return;
         }
@@ -141,7 +112,7 @@ function procesarEInyectarParametros(scadText) {
                 });
                 select.addEventListener('change', () => {
                     label.innerText = `${nombreVar.replace(/_/g, ' ')}: ${select.value}`;
-                    ejecutarCompilacionWASM();
+                    compilarDisenoReal();
                 });
                 divGrupo.appendChild(label); divGrupo.appendChild(select);
             } 
@@ -153,10 +124,11 @@ function procesarEInyectarParametros(scadText) {
 
                 const slider = document.createElement('input');
                 slider.type = "range"; slider.id = `param-${nombreVar}`;
-                slider.min = min; slider.max = max; slider.step = step; slider.value = parseFloat(valorDefecto);
+                slider.min = min; slider.max = max; slider.step = step;
+                slider.value = parseFloat(valorDefecto);
                 slider.addEventListener('input', () => {
                     label.innerText = `${nombreVar.replace(/_/g, ' ')}: ${slider.value}${isNaN(slider.value) ? '' : ' mm'}`;
-                    ejecutarCompilacionWASM();
+                    compilarDisenoReal();
                 });
                 divGrupo.appendChild(label); divGrupo.appendChild(slider);
             }
@@ -165,60 +137,81 @@ function procesarEInyectarParametros(scadText) {
     });
 }
 
-// --- INTERCEPCIÓN DEL ARCHIVO VECTORIAL ---
+// --- INTERCEPCIÓN DINÁMICA DE CUALQUIER ARCHIVO SVG ---
 const fileInput = document.getElementById('svg-file');
 if (fileInput) {
     fileInput.addEventListener('change', (e) => {
         const file = e.target.files[0];
         if (!file) return;
+        
         const reader = new FileReader();
         reader.onload = (event) => {
-            svgDataVirtual = event.target.result;
-            alert("¡Archivo SVG cargado correctamente!\nDetectando contornos vectoriales primarios.");
-            ejecutarCompilacionWASM();
+            archivoSvgContenido = event.target.result;
+            // Escribimos el contenido del SVG del cliente en el sistema de archivos virtual con el nombre estático
+            if (openscadInstance) {
+                openscadInstance.FS.writeFile("diseno.svg", archivoSvgContenido);
+            }
+            alert("¡Diseño '" + file.name + "' cargado y vinculado con éxito!");
+            compilarDisenoReal();
         };
         reader.readAsText(file);
     });
 }
 
-// --- COMPILADOR OPENSCAD WASM SIMULADO EN ENTORNO LOCAL ---
-function ejecutarCompilacionWASM() {
-    if (!svgDataVirtual) return;
+// --- COMPILADOR OFICIAL OPENSCAD EN ACCIÓN ---
+async function compilarDisenoReal() {
+    if (!openscadInstance || !archivoSvgContenido) return;
+    
     const loader = document.getElementById('loading');
     loader.style.display = "block";
+    loader.innerText = "Compilando mallas corpóreas en tiempo real...";
 
-    // Reemplazo y limpieza de geometrías previas en el visor
-    if (currentMesh) scene.add(currentMesh);
+    // Generamos el bloque de variables según los sliders actuales
+    let variablesModificadas = "";
+    const inputs = document.querySelectorAll('#sidebar input[type="range"], #sidebar select');
+    inputs.forEach(input => {
+        const idVar = input.id.replace('param-', '');
+        const valor = isNaN(input.value) ? `"${input.value}"` : input.value;
+        variablesModificadas += `${idVar} = ${valor};\n`;
+    });
 
-    setTimeout(() => {
+    // Descargamos o concatenamos el archivo maestro completo .scad que subiste (Módulos de vaciado, muescas, etc.)
+    // Para simplificar la ejecución nativa, descargamos tu archivo original guardado en el servidor
+    try {
+        const response = await fetch('Generador_Letras_PRO_v5.scad');
+        const scriptOriginalCompleto = await response.text();
+        
+        // Unimos las modificaciones de la web con el cuerpo del código de ingeniería
+        const codigoFinalParaCompilar = variablesModificadas + "\n" + scriptOriginalCompleto;
+        
+        // Escribimos el código unificado en la memoria virtual
+        openscadInstance.FS.writeFile("input.scad", codigoFinalParaCompilar);
+        
+        // Le ordenamos a OpenSCAD compilar el renderizado 3D real
+        await openscadInstance.compile("input.scad");
         loader.style.display = "none";
-        
-        // Simulación visual geométrica del volumen extruido en base al SVG
-        if (currentMesh) scene.remove(currentMesh);
-        
-        const hCorporea = parseFloat(document.getElementById('param-Altura_Corporea')?.value || 35);
-        const geometry = new THREE.CylinderGeometry(30, 30, hCorporea, 6, 1);
-        const material = new THREE.MeshStandardMaterial({ color: 0x00b4d8, roughness: 0.4, metalness: 0.1, wireframe: false });
-        
-        currentMesh = new THREE.Mesh(geometry, material);
-        currentMesh.rotation.x = Math.PI / 2;
-        currentMesh.position.z = hCorporea / 2;
-        scene.add(currentMesh);
-        
-    }, 600);
+    } catch (err) {
+        console.error("Error en compilación de geometría:", err);
+        loader.innerText = "Error en la topología del SVG. Revisa las líneas vectoriales.";
+    }
 }
 
-// --- BOTÓN EXPORTACIÓN DIRECTA STL ---
-document.getElementById('btn-export').addEventListener('click', () => {
-    if (!svgDataVirtual) {
-        alert("Por favor, sube un diseño vectorial primero.");
+// --- ACCIÓN DESCARGA DE STL DE FABRICACIÓN ---
+document.getElementById('btn-export').addEventListener('click', async () => {
+    if (!openscadInstance || !archivoSvgContenido) {
+        alert("Sube un archivo SVG para poder exportar.");
         return;
     }
-    alert("Compilando mallas STL... Tu archivo se descargará optimizado para Anycubic/Elegoo.");
-});
-
-// Inicialización global
-window.addEventListener('DOMContentLoaded', () => {
-    initVisor3D();
-    procesarEInyectarParametros(codigoMasterSCAD);
+    alert("Generando archivo STL definitivo de alta precisión... Espera un momento.");
+    
+    // Ejecuta el comando nativo de exportación de OpenSCAD
+    await openscadInstance.generateSTL("input.scad", "produccion.stl");
+    
+    // Descarga automática del archivo al navegador del cliente
+    const stlBuffer = openscadInstance.FS.readFile("produccion.stl");
+    const blob = new Blob([stlBuffer], { type: "application/octet-stream" });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = "FunesDesign_Letra_Corporea.stl";
+    link.click();
 });
